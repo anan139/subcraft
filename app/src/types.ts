@@ -60,7 +60,7 @@ export interface MediaInfo {
 
 export interface TaskState {
   task_id: string
-  status: 'running' | 'done' | 'error'
+  status: 'running' | 'done' | 'error' | 'cancelled'
   progress: number
   message: string
   error: string | null
@@ -81,6 +81,16 @@ export interface AppConfig {
   deepl_api_key_set?: boolean
   whisper_model: string
   whisper_device: string
+  parakeet_model?: string      // Parakeet 引擎默认模型
+  asr_engine?: string          // 'local' | 'parakeet' | 'openai'，记住识别对话框上次的选择
+  whisper_language?: string    // 识别语言码（'auto' = 自动检测）
+  translate_target?: string    // 翻译目标语言码，记住上次的选择
+  translate_choice?: string    // 'ai:<providerId>' 或 'deepl'
+  export_srt?: boolean         // 导出对话框记住的上次选择
+  export_ass?: boolean
+  export_video?: boolean
+  export_hard?: boolean
+  export_dir?: string          // 最近一次选择的输出目录
   translate_batch_size: number
   translate_concurrency: number
   translation_glossary?: string
@@ -89,19 +99,27 @@ export interface AppConfig {
   [key: string]: unknown
 }
 
+// 识别模型元数据：label 用于下拉框，langs 为「擅长语言」悬浮提示
+export interface AsrModelInfo {
+  label: string
+  langs: string
+}
+export type AsrEngineId = 'local' | 'parakeet' | 'openai'
+export type AsrModels = Record<AsrEngineId, Record<string, AsrModelInfo>>
+
 // 常用 AI 厂商预设（一键填充 Base URL 与默认模型）
 export const AI_PRESETS: { name: string; base_url: string; model: string }[] = [
   { name: 'OpenAI', base_url: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
   { name: 'DeepSeek', base_url: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
   { name: 'Kimi (Moonshot)', base_url: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' },
-  { name: '通义千问', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
-  { name: '智谱 GLM', base_url: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash' },
+  { name: 'Qwen (Alibaba)', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
+  { name: 'Zhipu GLM', base_url: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash' },
   { name: 'OpenRouter', base_url: 'https://openrouter.ai/api/v1', model: 'openai/gpt-4o-mini' },
 ]
 
 export const LANGUAGES: Record<string, string> = {
-  auto: '自动检测',
-  zh: '中文',
+  auto: 'Auto detect',
+  zh: 'Chinese',
   en: 'English',
   ja: '日本語',
   ko: '한국어',
@@ -116,7 +134,7 @@ export const LANGUAGES: Record<string, string> = {
   vi: 'Tiếng Việt',
   id: 'Bahasa Indonesia',
   hi: 'हिन्दी',
-  yue: '粤语',
+  yue: 'Cantonese',
 }
 
 export const DEFAULT_STYLE: SubtitleStyle = {
@@ -146,6 +164,7 @@ declare global {
       openVideoDialog: () => Promise<string | null>
       selectDirDialog: () => Promise<string | null>
       saveFileDialog: (defaultName: string, ext: string) => Promise<string | null>
+      getPathForFile: (file: File) => string
     }
   }
 }

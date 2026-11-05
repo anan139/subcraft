@@ -48,6 +48,11 @@ def main() -> None:
         "--collect-all=faster_whisper",          # 含 Silero VAD 模型
         "--collect-all=ctranslate2",
         "--collect-binaries=onnxruntime",        # 只要运行库，不要 quantization/transformers/tools
+        # onnx-asr（Parakeet 引擎）：惰性 import 且带 data 文件（preprocessors/data/*.onnx）；
+        # 包内运行时会读自身 metadata（importlib.metadata），需要一并打进包
+        "--collect-submodules=onnx_asr",
+        "--collect-data=onnx_asr",
+        "--copy-metadata=onnx-asr",
         "--hidden-import=onnxruntime.capi._pybind_state",
         "--collect-submodules=huggingface_hub",  # 惰性导入，需显式收集
         "--collect-submodules=mcp.server",

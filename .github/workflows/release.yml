@@ -105,6 +105,10 @@ jobs:
             Get-Content backend-out.log, backend-err.log -ErrorAction SilentlyContinue | Select-Object -Last 60
             throw "后端未就绪（退出码 $($p.ExitCode)）"
           }
+          # 新路由完整性：批量与识别模型清单（含 Parakeet）必须打包进 exe
+          $models = Invoke-RestMethod http://127.0.0.1:47999/api/asr_models -Headers @{ "X-SubCraft-Token" = "ci-smoke" }
+          if (-not $models.parakeet) { throw "打包后的后端缺少 parakeet 模型清单" }
+          Write-Host "asr_models 正常（local/parakeet/openai）"
           $code = try { (Invoke-WebRequest http://127.0.0.1:47999/api/config -UseBasicParsing).StatusCode } catch { $_.Exception.Response.StatusCode.value__ }
           Stop-Process $p -Force
           if ($code -ne 401) { throw "缺少令牌时应返回 401，实际 $code" }

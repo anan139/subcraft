@@ -100,7 +100,7 @@ def test_status_exposes_env_without_secrets():
     assert st["app"].startswith("SubCraft")
     assert isinstance(st["ffmpeg_ready"], bool)
     assert st["whisper"]["models"] and "large-v3-turbo" in st["whisper"]["models"]
-    assert st["languages"]["zh"] == "中文"
+    assert st["languages"]["zh"] == "Chinese"
     for p in st["ai_providers"]:
         assert "api_key" not in p, "不得回显 API Key"
 

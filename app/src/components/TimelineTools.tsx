@@ -36,9 +36,9 @@ export default function TimelineTools() {
     let found = cuts
     if (!found) {
       const { task_id } = await api.timelineCuts({ video_path: videoPath })
-      setTask({ task_id, status: 'running', progress: 0, message: '检测镜头切点', error: null, label: '镜头检测' })
+      setTask({ task_id, status: 'running', progress: 0, message: 'Detecting shot cuts', error: null, label: 'Shot detection' })
       try {
-        const r = await waitTask(task_id, (t) => setTask({ ...t, label: '镜头检测' }))
+        const r = await waitTask(task_id, (t) => setTask({ ...t, label: 'Shot detection' }))
         found = (r.cuts as number[]) ?? []
       } finally { setTask(null) }
       setCuts(found)
@@ -48,7 +48,7 @@ export default function TimelineTools() {
 
   const shift = () => run(async () => {
     const v = parseFloat(offset)
-    if (!Number.isFinite(v) || v === 0) throw new Error('请输入非 0 的秒数，正数延后、负数提前')
+    if (!Number.isFinite(v) || v === 0) throw new Error('Enter a non-zero number of seconds — positive delays, negative advances')
     setResult(await applyTimeline({ op: 'shift', offset: v, from_time: fromPlayhead ? playhead() : null }))
   })
 
@@ -62,24 +62,24 @@ export default function TimelineTools() {
   return (
     <div className="timeline-tools">
       <div className="tt-row">
-        <button disabled={!videoPath} title="检测视频镜头切换，让字幕不跨镜头：刚越过切点的收回、离切点很近的贴齐" onClick={snap}>
-          ⌖ 贴齐镜头切点{cuts ? `（${cuts.length}）` : ''}
+        <button disabled={!videoPath} title="Detect shot changes so subtitles don't span cuts: pull back lines just past a cut, snap lines close to one" onClick={snap}>
+          ⌖ Snap to cuts{cuts ? ` (${cuts.length})` : ''}
         </button>
         <span className="tt-sep" />
-        <label title="正数延后、负数提前（秒）">平移</label>
+        <label title="Positive delays, negative advances (seconds)">Shift</label>
         <input className="tt-num" value={offset} onChange={(e) => setOffset(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && shift()} />
-        <label className="tt-check" title="只平移播放头之后的字幕（如中间插了片头/广告）">
-          <input type="checkbox" checked={fromPlayhead} onChange={(e) => setFromPlayhead(e.target.checked)} />从播放头起
+        <label className="tt-check" title="Only shift subtitles after the playhead (e.g. an intro/ad was inserted)">
+          <input type="checkbox" checked={fromPlayhead} onChange={(e) => setFromPlayhead(e.target.checked)} />From playhead
         </label>
-        <button onClick={shift}>应用</button>
+        <button onClick={shift}>Apply</button>
         {overlaps > 0 && (
-          <button className="tt-warn" title="把重叠段的结束时间截到下一段开始" onClick={() => run(async () => setResult(await applyTimeline({ op: 'fix_overlaps' })))}>
-            修复重叠 {overlaps}
+          <button className="tt-warn" title="Trim overlapped segments' end times to the next segment's start" onClick={() => run(async () => setResult(await applyTimeline({ op: 'fix_overlaps' })))}>
+            Fix overlaps {overlaps}
           </button>
         )}
         {issues.length > 0 && (
-          <span className="tt-issues" title="点击跳到第一处；列表中标黄的行可悬停查看原因" onClick={() => requestSeek(track.segments[issues[0].index]?.start ?? 0)}>
-            ⚠ {issues.length} 处时间轴问题
+          <span className="tt-issues" title="Click to jump to the first one; hover highlighted rows in the list for details" onClick={() => requestSeek(track.segments[issues[0].index]?.start ?? 0)}>
+            ⚠ {issues.length} timing issue(s)
           </span>
         )}
       </div>
@@ -91,17 +91,17 @@ export default function TimelineTools() {
 
 function ResultLine({ info, onSplit, onClose }: { info: TimelineInfo; onSplit: (i: number, at: number) => void; onClose: () => void }) {
   const parts: string[] = []
-  if (info.changes) parts.push(`贴齐 ${info.changes.length} 段`)
-  if (info.shifted !== undefined) parts.push(`平移 ${info.shifted} 段`)
-  if (info.fixed !== undefined) parts.push(`修复重叠 ${info.fixed} 处`)
-  if (info.split_at !== undefined) parts.push(`已在 ${info.split_at.toFixed(2)}s 拆分`)
-  if (info.synced?.length) parts.push(`已同步 ${info.synced.length} 条对齐轨`)
+  if (info.changes) parts.push(`Snapped ${info.changes.length} segment(s)`)
+  if (info.shifted !== undefined) parts.push(`Shifted ${info.shifted} segment(s)`)
+  if (info.fixed !== undefined) parts.push(`Fixed ${info.fixed} overlap(s)`)
+  if (info.split_at !== undefined) parts.push(`Split at ${info.split_at.toFixed(2)}s`)
+  if (info.synced?.length) parts.push(`Synced ${info.synced.length} aligned track(s)`)
   return (
     <div className="tt-msg">
-      <span>{parts.join('，') || '无改动'}</span>
+      <span>{parts.join(', ') || 'No changes'}</span>
       {info.need_split?.map((x) => (
         <button key={x.index} className="tt-link" title={x.text} onClick={() => onSplit(x.index, x.cuts[0])}>
-          第 {x.index + 1} 段跨镜头 @{x.cuts[0].toFixed(2)}s → 拆分
+          Segment {x.index + 1} spans a cut @{x.cuts[0].toFixed(2)}s → split
         </button>
       ))}
       <span className="tt-close" onClick={onClose}>✕</span>

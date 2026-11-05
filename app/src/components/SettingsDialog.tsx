@@ -26,7 +26,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
     const id = `p${Date.now().toString(36)}`
     set('ai_providers', [
       ...providers,
-      { id, name: preset?.name ?? '自定义厂商', base_url: preset?.base_url ?? '', model: preset?.model ?? '', api_key: '' },
+      { id, name: preset?.name ?? 'Custom provider', base_url: preset?.base_url ?? '', model: preset?.model ?? '', api_key: '' },
     ])
   }
   const removeProvider = (id: string) => set('ai_providers', providers.filter((p) => p.id !== id))
@@ -38,7 +38,7 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
       setSaved(true)
       return true
     } catch (e) {
-      alert(`保存失败: ${e instanceof Error ? e.message : e}`)
+      alert(`Failed to save: ${e instanceof Error ? e.message : e}`)
       return false
     }
   }
@@ -57,81 +57,81 @@ export default function SettingsDialog({ onClose }: { onClose: () => void }) {
   const testBadge = (id: string) => {
     const r = tests[id]
     if (!r) return null
-    if (r === 'testing') return <span className="test-badge testing">测试中…</span>
+    if (r === 'testing') return <span className="test-badge testing">Testing…</span>
     return <span className={`test-badge ${r.ok ? 'ok' : 'fail'}`}>{r.ok ? '✓ ' : '✗ '}{r.message}</span>
   }
 
   return createPortal(
     <div className="dialog-mask" onClick={onClose}>
       <div className="dialog wide" onClick={(e) => e.stopPropagation()}>
-        <h3>⚙ 设置</h3>
+        <h3>⚙ Settings</h3>
 
         {/* ── AI 翻译接口（OpenAI 兼容，支持多厂商）── */}
         <div className="section-head">
-          <span>AI 翻译接口（OpenAI 兼容，可添加多家厂商）</span>
+          <span>AI translation providers (OpenAI-compatible, add multiple)</span>
         </div>
-        {providers.length === 0 && <div className="hint" style={{ marginBottom: 10 }}>尚未添加厂商，点击下方按钮添加。翻译与云端识别都会使用这里的接口。</div>}
+        {providers.length === 0 && <div className="hint" style={{ marginBottom: 10 }}>No providers yet — click a button below to add one. Translation and cloud transcription both use these.</div>}
         {providers.map((p) => (
           <div key={p.id} className="provider-card">
             <div className="provider-head">
-              <input className="provider-name" value={p.name} onChange={(e) => setProvider(p.id, { name: e.target.value })} placeholder="厂商名称" />
-              <button className="test-btn" onClick={() => test('openai', p.id)} disabled={tests[p.id] === 'testing'}>测试连接</button>
-              <button className="del-btn" title="删除该厂商" onClick={() => removeProvider(p.id)}>✕</button>
+              <input className="provider-name" value={p.name} onChange={(e) => setProvider(p.id, { name: e.target.value })} placeholder="Provider name" />
+              <button className="test-btn" onClick={() => test('openai', p.id)} disabled={tests[p.id] === 'testing'}>Test connection</button>
+              <button className="del-btn" title="Remove this provider" onClick={() => removeProvider(p.id)}>✕</button>
             </div>
             <div className="row"><label>Base URL</label>
               <input value={p.base_url} onChange={(e) => setProvider(p.id, { base_url: e.target.value })} placeholder="https://api.example.com/v1" /></div>
             <div className="row"><label>API Key</label>
-              <input type="password" value={p.api_key} onChange={(e) => setProvider(p.id, { api_key: e.target.value })} placeholder={p.api_key_set ? '已保存（输入以更换）' : 'sk-...'} /></div>
-            <div className="row"><label>模型</label>
+              <input type="password" value={p.api_key} onChange={(e) => setProvider(p.id, { api_key: e.target.value })} placeholder={p.api_key_set ? 'Saved (type to replace)' : 'sk-...'} /></div>
+            <div className="row"><label>Model</label>
               <input value={p.model} onChange={(e) => setProvider(p.id, { model: e.target.value })} placeholder="gpt-4o-mini / deepseek-chat / ..." /></div>
             {testBadge(p.id)}
           </div>
         ))}
         <div className="preset-row">
-          <button onClick={() => addProvider()}>+ 空白厂商</button>
+          <button onClick={() => addProvider()}>+ Blank provider</button>
           {AI_PRESETS.map((preset) => (
             <button key={preset.name} className="preset-btn" onClick={() => addProvider(preset)}>+ {preset.name}</button>
           ))}
         </div>
 
         {/* ── DeepL ── */}
-        <div className="section-head"><span>DeepL 翻译</span></div>
+        <div className="section-head"><span>DeepL translation</span></div>
         <div className="row"><label>DeepL API Key</label>
-          <input type="password" value={cfg.deepl_api_key} onChange={(e) => set('deepl_api_key', e.target.value)} placeholder={cfg.deepl_api_key_set ? '已保存（输入以更换）' : 'xxx:fx（免费版以 :fx 结尾）'} />
-          <button className="test-btn" onClick={() => test('deepl', 'deepl')} disabled={tests['deepl'] === 'testing'}>测试连接</button></div>
+          <input type="password" value={cfg.deepl_api_key} onChange={(e) => set('deepl_api_key', e.target.value)} placeholder={cfg.deepl_api_key_set ? 'Saved (type to replace)' : 'xxx:fx (free keys end with :fx)'} />
+          <button className="test-btn" onClick={() => test('deepl', 'deepl')} disabled={tests['deepl'] === 'testing'}>Test connection</button></div>
         {testBadge('deepl')}
 
         {/* ── 语音识别 ── */}
-        <div className="section-head"><span>语音识别</span></div>
-        <div className="row"><label>识别模型</label>
+        <div className="section-head"><span>Speech recognition</span></div>
+        <div className="row"><label>Model</label>
           <input value={cfg.whisper_model} onChange={(e) => set('whisper_model', e.target.value)} /></div>
-        <div className="row"><label>识别设备</label>
+        <div className="row"><label>Device</label>
           <select value={cfg.whisper_device} onChange={(e) => set('whisper_device', e.target.value)}>
-            <option value="auto">自动（优先 GPU）</option>
-            <option value="cuda">强制 GPU (CUDA)</option>
-            <option value="cpu">强制 CPU</option>
+            <option value="auto">Auto (prefer GPU)</option>
+            <option value="cuda">Force GPU (CUDA)</option>
+            <option value="cpu">Force CPU</option>
           </select></div>
-        <div className="row"><label>单条长度上限</label>
+        <div className="row"><label>Max line length</label>
           <input type="number" min={0} step={1} value={cfg.subtitle_max_units ?? 21}
             onChange={(e) => set('subtitle_max_units', Number(e.target.value))} />
-          <span className="hint" style={{ marginLeft: 8 }}>汉字计 1、英文字符计 0.5；0 = 不切分</span></div>
-        <div className="row"><label>单条时长上限(秒)</label>
+          <span className="hint" style={{ marginLeft: 8 }}>CJK chars count 1, latin chars 0.5; 0 = don't split</span></div>
+        <div className="row"><label>Max duration (s)</label>
           <input type="number" min={1} step={0.5} value={cfg.subtitle_max_duration ?? 7}
             onChange={(e) => set('subtitle_max_duration', Number(e.target.value))} /></div>
 
         {/* ── 翻译术语表 ── */}
-        <div className="section-head"><span>翻译术语表</span></div>
+        <div className="section-head"><span>Translation glossary</span></div>
         <textarea className="glossary" rows={5} value={cfg.translation_glossary ?? ''}
           onChange={(e) => set('translation_glossary', e.target.value)}
-          placeholder={'每行一条：原文=译文\nOpenAI=OpenAI\nTony Stark=托尼·斯塔克'}
+          placeholder={'One entry per line: source=target\nOpenAI=OpenAI\nTony Stark=Tony Stark'}
           style={{ width: '100%', boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical' }} />
-        <div className="hint">AI 翻译时会把出现在当前批次里的术语一并发给模型，保证人名、术语前后一致。</div>
+        <div className="hint">Terms found in the current batch are sent to the model together with the text, keeping names and terminology consistent.</div>
 
-        <div className="hint">API Key 仅保存在本机配置文件中，不会上传。</div>
-        {saved && <div className="hint" style={{ color: 'var(--accent2)' }}>已保存 ✓</div>}
+        <div className="hint">API keys are only stored in the local config file and never uploaded.</div>
+        {saved && <div className="hint" style={{ color: 'var(--accent2)' }}>Saved ✓</div>}
         <div className="actions">
-          <button onClick={onClose}>关闭</button>
-          <button className="primary" onClick={save}>保存</button>
+          <button onClick={onClose}>Close</button>
+          <button className="primary" onClick={save}>Save</button>
         </div>
       </div>
     </div>,

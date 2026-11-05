@@ -92,21 +92,21 @@ def guess_language(path: Path) -> str | None:
 def validate(opts: BatchOptions) -> BatchOptions:
     opts.mode = (opts.mode or "media").lower()
     if opts.mode not in ("media", "subs"):
-        raise BatchError(f"mode 只能是 media / subs，收到: {opts.mode}")
+        raise BatchError(f"mode must be media / subs, got: {opts.mode}")
     if opts.target is not None and (opts.target not in LANGUAGES or opts.target == "auto"):
-        raise BatchError(f"无效的目标语言码: {opts.target}")
+        raise BatchError(f"Invalid target language code: {opts.target}")
     if opts.mode == "subs" and not opts.target:
-        raise BatchError("subs 模式（翻译已有字幕）必须指定目标语言")
+        raise BatchError("subs mode (translate existing subtitles) requires a target language")
     opts.formats = [f.lower() for f in (opts.formats or ["srt", "ass"])]
     bad = [f for f in opts.formats if f not in ("srt", "ass")]
     if bad or not opts.formats:
-        raise BatchError(f"不支持的字幕格式: {'、'.join(bad) or '空'}（仅 srt / ass）")
+        raise BatchError(f"Unsupported subtitle formats: {', '.join(bad) or '(empty)'} (only srt / ass)")
     if opts.split_cuts:
         opts.snap_cuts = True
     if opts.video is not None:
         opts.video = opts.video.lower() or None
         if opts.video not in (None, "soft", "hard"):
-            raise BatchError(f"video 只能是 soft / hard / 留空，收到: {opts.video}")
+            raise BatchError(f"video must be soft / hard / empty, got: {opts.video}")
     return opts
 
 
@@ -121,7 +121,7 @@ def _inside(p: Path, d: Path) -> bool:
 def find_inputs(root: Path, opts: BatchOptions) -> list[Path]:
     """按模式列出要处理的文件（自然排序）。会排除输出目录与本工具产出的文件。"""
     if not root.is_dir():
-        raise BatchError(f"不是文件夹: {root}")
+        raise BatchError(f"Not a folder: {root}")
     out_root = Path(opts.out_dir).expanduser().resolve() if opts.out_dir else None
     it = root.rglob("*") if opts.recursive else root.glob("*")
     files = []
@@ -223,7 +223,7 @@ def _translate(src: SubtitleTrack, opts: BatchOptions, cb: ProgressCb) -> Subtit
         progress_cb=cb, glossary=opts.glossary,
     )
     if len(translated) != len(src.segments):
-        raise RuntimeError(f"翻译段数不对齐: 源 {len(src.segments)} / 译文 {len(translated)}")
+        raise RuntimeError(f"Translation segment count mismatch: source {len(src.segments)} / translated {len(translated)}")
     return SubtitleTrack(id=_tid("bt"), language=opts.target, label=LANGUAGES.get(opts.target, opts.target),
                          role="translation", segments=translated, style=translation_style(src.style))
 
@@ -268,16 +268,16 @@ def _export(tracks: list[SubtitleTrack], primary: SubtitleTrack, media: Path | N
     video_out = None
     if opts.video:
         if media is None:
-            raise RuntimeError("找不到同名视频，无法封装 / 烧录")
+            raise RuntimeError("No matching video found next to the subtitle file — cannot mux/burn")
         out_path = video_out_path(out_dir, base, opts.video)
         if out_path.resolve() == media.resolve():
-            raise RuntimeError("视频输出路径与源视频相同")
+            raise RuntimeError("Video output path is the same as the source video")
         req = export_router.VideoExportRequest(
             tracks=tracks, bilingual=bilingual, primary_id=primary.id, width=w, height=h,
             video_path=str(media), out_path=str(out_path), mode=opts.video,
         )
         if opts.video == "soft":
-            cb(0.1, "封装软字幕...")
+            cb(0.1, "Muxing soft subtitles...")
             subs = export_router.build_soft_sub_files(req, out_path.parent, out_path.stem)
             try:
                 ffmpeg_tool.mux_subtitles(str(media), subs, out_path, default_index=0)
@@ -287,7 +287,7 @@ def _export(tracks: list[SubtitleTrack], primary: SubtitleTrack, media: Path | N
         else:
             sub = export_router.write_burn_ass(req, "burn", out_path.stem, None, out_path.parent)
             try:
-                ffmpeg_tool.burn_subtitles(str(media), sub, out_path, _scaled(cb, 0.05, 1.0, "压制 "),
+                ffmpeg_tool.burn_subtitles(str(media), sub, out_path, _scaled(cb, 0.05, 1.0, "Encoding "),
                                            export_router.fonts_dir_for(req))
             finally:
                 sub.unlink(missing_ok=True)
@@ -310,26 +310,28 @@ def process_media(item: Path, out_dir: Path, opts: BatchOptions, cb: ProgressCb)
 
     w, h, duration = _canvas(item)
     lang = None if opts.source_lang in (None, "", "auto") else opts.source_lang
+    eng = str(opts.engine).lower()
+    engine_arg = "openai" if eng in ("openai", "cloud") else ("parakeet" if eng == "parakeet" else "local")
     segments, detected = asr.transcribe(
-        str(item), duration, "openai" if str(opts.engine).lower() in ("openai", "cloud") else "local",
-        opts.whisper_model, lang, None, None, _scaled(cb, 0.0, 0.5, "识别 "),
+        str(item), duration, engine_arg,
+        opts.whisper_model, lang, None, None, _scaled(cb, 0.0, 0.5, "Transcribing "),
     )
     if not segments:
-        raise RuntimeError("未识别到语音内容")
+        raise RuntimeError("No speech detected in the audio")
     extra: dict[str, Any] = {}
     if opts.snap_cuts:
-        cb(0.5, "检测镜头切点...")
+        cb(0.5, "Detecting shot cuts...")
         segments, extra["snap"] = _snap(segments, item, opts)
     language = detected or "und"
     src = SubtitleTrack(id=_tid("bs"), language=language, label=LANGUAGES.get(language, language) or language,
                         role="source", segments=segments)
     tracks, primary = [src], src
     if opts.target:
-        trn = _translate(src, opts, _scaled(cb, 0.55, 0.8, "翻译 "))
+        trn = _translate(src, opts, _scaled(cb, 0.55, 0.8, "Translating "))
         tracks.append(trn)
         primary = trn if opts.primary_target else src
     files, video_out = _export(tracks, primary, item, out_dir, base_name_for(item, opts), opts, w, h,
-                               _scaled(cb, 0.82, 1.0, "导出 "))
+                               _scaled(cb, 0.82, 1.0, "Exporting "))
     return {"language": language, "segments": len(segments), "duration": round(duration, 2),
             "files": files, "video": video_out, **extra}
 
@@ -339,21 +341,21 @@ def process_subtitle(item: Path, out_dir: Path, opts: BatchOptions, cb: Progress
 
     segments = subtitle_parser.parse_file(item)
     if not segments:
-        raise RuntimeError("字幕文件没有可用段落")
+        raise RuntimeError("No usable segments in the subtitle file")
     media = find_media_for(item)
     w, h, _ = _canvas(media)
     extra: dict[str, Any] = {"media": str(media) if media else None}
     if opts.snap_cuts and media is not None:
-        cb(0.05, "检测镜头切点...")
+        cb(0.05, "Detecting shot cuts...")
         segments, extra["snap"] = _snap(segments, media, opts)
     language = (None if opts.source_lang in (None, "", "auto") else opts.source_lang) \
         or guess_language(item) or "und"
     src = SubtitleTrack(id=_tid("bs"), language=language, label=LANGUAGES.get(language, language) or language,
                         role="source", segments=segments)
-    trn = _translate(src, opts, _scaled(cb, 0.1, 0.8, "翻译 "))
+    trn = _translate(src, opts, _scaled(cb, 0.1, 0.8, "Translating "))
     primary = trn if opts.primary_target else src
     files, video_out = _export([src, trn], primary, media, out_dir, base_name_for(item, opts), opts, w, h,
-                               _scaled(cb, 0.82, 1.0, "导出 "))
+                               _scaled(cb, 0.82, 1.0, "Exporting "))
     return {"language": language, "segments": len(segments), "files": files, "video": video_out, **extra}
 
 
@@ -378,7 +380,7 @@ def run_batch(folder: str | Path, opts: BatchOptions, cb: ProgressCb | None = No
     }
     report["options"].pop("glossary", None)
     if not items:
-        report["message"] = "没有找到可处理的文件" + ("（可加 --recursive 扫描子目录）" if not opts.recursive else "")
+        report["message"] = "No processable files found" + (" (try --recursive to scan subfolders)" if not opts.recursive else "")
         return report
     if not dry_run and (opts.mode == "media" or opts.video):
         from . import ffmpeg_tool

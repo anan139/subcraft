@@ -1,5 +1,5 @@
 // 后端 API 客户端 + WebSocket 任务进度
-import type { AppConfig, MediaInfo, Segment, SubtitleTrack, TaskState, TimelineInfo, TimingIssue } from './types'
+import type { AppConfig, AsrModels, MediaInfo, Segment, SubtitleTrack, TaskState, TimelineInfo, TimingIssue } from './types'
 
 const base = () => window.subcraft.apiBase
 const token = () => window.subcraft.token || ''
@@ -47,6 +47,17 @@ export const api = {
     req<{ ok: boolean; message: string; latency_ms: number }>('/api/translate/test', p),
 
   task: (id: string) => req<TaskState & { result: unknown }>(`/api/tasks/${id}`),
+  cancelTask: (id: string) => req<{ ok: boolean }>(`/api/tasks/${id}/cancel`, {}),
+
+  asrModels: () => req<AsrModels>('/api/asr_models'),
+
+  batchStart: (p: {
+    folder: string; out_dir?: string | null; recursive?: boolean
+    target?: string | null; provider?: string; provider_id?: string | null
+    engine?: string; model?: string | null; language?: string | null
+    formats?: string[]; video?: string | null; skip_existing?: boolean
+    snap_cuts?: boolean; split_cuts?: boolean
+  }) => req<{ task_id: string }>('/api/batch/start', p),
 
   previewAss: (p: {
     tracks: SubtitleTrack[]; bilingual: boolean; primary_id: string | null
@@ -91,7 +102,7 @@ export const api = {
   whisperModels: () => req<Record<string, string>>('/api/whisper_models'),
 }
 
-/** 等待任务完成（轮询兜底，WebSocket 推送为主） */
+/** 等待任务完成（轮询兜底，WebSocket 推送为主）。取消的任务 reject('Cancelled by user') */
 export function waitTask(
   taskId: string,
   onProgress: (t: TaskState) => void,
@@ -103,7 +114,8 @@ export function waitTask(
         const t = await api.task(taskId)
         onProgress(t)
         if (t.status === 'done' && !settled) { settled = true; resolve((t.result ?? {}) as Record<string, unknown>) }
-        else if (t.status === 'error' && !settled) { settled = true; reject(new Error(t.error || '任务失败')) }
+        else if (t.status === 'error' && !settled) { settled = true; reject(new Error(t.error || 'Task failed')) }
+        else if (t.status === 'cancelled' && !settled) { settled = true; reject(new Error('Cancelled by user')) }
         else if (!settled) setTimeout(poll, 500)
       } catch (e) { if (!settled) { settled = true; reject(e) } }
     }

@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/media", tags=["media"])
 def probe(body: dict) -> MediaInfo:
     path = body.get("path", "")
     if not path or not Path(path).exists():
-        raise HTTPException(404, "文件不存在")
+        raise HTTPException(404, "File not found")
     return ffmpeg_tool.probe(path)
 
 
@@ -25,7 +25,7 @@ def stream(request: Request, path: str = Query(...)):
     """支持 Range 的视频流，供 <video> 播放与拖动。"""
     file = Path(path)
     if not file.exists():
-        raise HTTPException(404, "文件不存在")
+        raise HTTPException(404, "File not found")
     file_size = file.stat().st_size
     range_header = request.headers.get("range")
     if not range_header:
@@ -38,7 +38,7 @@ def stream(request: Request, path: str = Query(...)):
         start = int(start_s) if start_s else 0
         end = int(end_s) if end_s else file_size - 1
     except ValueError:
-        raise HTTPException(416, "Range 无效")
+        raise HTTPException(416, "Invalid Range header")
     end = min(end, file_size - 1)
     length = end - start + 1
 
@@ -79,5 +79,5 @@ def get_fonts() -> dict[str, str]:
 def get_font_file(family: str = Query(...)):
     p = fonts.font_file(family)
     if not p:
-        raise HTTPException(404, "字体不存在")
+        raise HTTPException(404, "Font not found")
     return FileResponse(p)

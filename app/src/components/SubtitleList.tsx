@@ -29,15 +29,15 @@ export default function SubtitleList() {
         <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--quantum-cyan)', marginBottom: 8 }}>
           [TOPOLOGY TIMELINE READY]
         </div>
-        导入视频后点击「① 识别字幕」
+        Import a video, then click "① Transcribe"
         <br />
-        识别完成后即可在此进行逐帧精确编辑
+        Once transcribed you can edit every line with frame-accurate timing here
       </div>
     )
   }
 
   const issueMap = new Map<number, string[]>()
-  for (const it of issues) issueMap.set(it.index, [...(issueMap.get(it.index) ?? []), `${ISSUE_LABEL[it.type] ?? it.type}：${it.detail}`])
+  for (const it of issues) issueMap.set(it.index, [...(issueMap.get(it.index) ?? []), `${ISSUE_LABEL[it.type] ?? it.type}: ${it.detail}`])
   const act = (e: React.MouseEvent, fn: () => Promise<unknown>) => {
     e.stopPropagation()
     fn().catch((err) => alert(err instanceof Error ? err.message : String(err)))
@@ -61,13 +61,13 @@ export default function SubtitleList() {
             <textarea
               value={seg.text}
               rows={Math.min(3, Math.max(1, seg.text.split('\n').length))}
-              placeholder="请输入字幕内容..."
+              placeholder="Subtitle text..."
               onChange={(e) => updateSegment(track.id, i, e.target.value)}
               onClick={(e) => e.stopPropagation()}
             />
             <div className="seg-actions">
               <button
-                title="拆分：播放头在本段内则在播放头处拆，否则在中间的标点/空格处拆（对齐的译文轨同步拆）"
+                title="Split: at the playhead if it is inside this segment, otherwise at a punctuation/space in the middle (aligned translation tracks split too)"
                 onClick={(e) => act(e, () => {
                   const t = playhead()
                   return applyTimeline({ op: 'split', index: i, at_time: t > seg.start + 0.05 && t < seg.end - 0.05 ? t : null })
@@ -76,11 +76,11 @@ export default function SubtitleList() {
                 ✂
               </button>
               {i < track.segments.length - 1 && (
-                <button title="与下一段合并" onClick={(e) => act(e, () => applyTimeline({ op: 'merge', first: i, last: i + 1 }))}>
+                <button title="Merge with next segment" onClick={(e) => act(e, () => applyTimeline({ op: 'merge', first: i, last: i + 1 }))}>
                   ⤓
                 </button>
               )}
-              <button className="seg-del" title="删除该段" onClick={(e) => { e.stopPropagation(); removeSegment(track.id, i) }}>
+              <button className="seg-del" title="Delete this segment" onClick={(e) => { e.stopPropagation(); removeSegment(track.id, i) }}>
                 ✕
               </button>
             </div>

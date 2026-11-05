@@ -92,9 +92,9 @@ def export_subtitles(req: SubtitleExportRequest) -> dict:
 @router.post("/video")
 def export_video(req: VideoExportRequest) -> dict:
     if not Path(req.video_path).exists():
-        raise HTTPException(404, "源视频不存在")
+        raise HTTPException(404, "Source video not found")
     if not req.tracks:
-        raise HTTPException(400, "没有可导出的字幕轨")
+        raise HTTPException(400, "No subtitle tracks to export")
 
     if req.mode == "hard":
         return _export_video_hard(req)
@@ -160,15 +160,15 @@ def build_soft_sub_files(req: VideoExportRequest, tmp: Path, stem: str) -> list[
 
 def _export_video_soft(req: VideoExportRequest) -> dict:
     def job(progress_cb):
-        progress_cb(0.05, "生成字幕轨...")
+        progress_cb(0.05, "Writing subtitle tracks...")
         tmp = Path(req.out_path).parent
         stem = _safe_name(Path(req.out_path).stem)
         subs = build_soft_sub_files(req, tmp, stem)
-        progress_cb(0.3, "封装中（视频流直接复制，不重编码）...")
+        progress_cb(0.3, "Muxing (video stream is copied, no re-encode)...")
         ffmpeg_tool.mux_subtitles(req.video_path, subs, Path(req.out_path), default_index=0)
         for f, _, _ in subs:
             f.unlink(missing_ok=True)
-        progress_cb(0.99, "完成")
+        progress_cb(0.99, "Done")
         return {"out_path": req.out_path}
 
     return {"task_id": manager.submit(job)}
@@ -176,7 +176,7 @@ def _export_video_soft(req: VideoExportRequest) -> dict:
 
 def _export_video_hard(req: VideoExportRequest) -> dict:
     def job(progress_cb):
-        progress_cb(0.05, "生成字幕轨...")
+        progress_cb(0.05, "Writing subtitle tracks...")
         sub = write_burn_ass(req, "burn", Path(req.out_path).stem, req.burn_track_id,
                              Path(req.out_path).parent)
         fonts_dir = fonts_dir_for(req)
@@ -186,7 +186,7 @@ def _export_video_hard(req: VideoExportRequest) -> dict:
 
         ffmpeg_tool.burn_subtitles(req.video_path, sub, Path(req.out_path), on_encode, fonts_dir)
         sub.unlink(missing_ok=True)
-        progress_cb(0.99, "完成")
+        progress_cb(0.99, "Done")
         return {"out_path": req.out_path}
 
     return {"task_id": manager.submit(job)}
@@ -196,9 +196,9 @@ def _export_video_hard(req: VideoExportRequest) -> dict:
 def preview_frame(req: PreviewFrameRequest) -> dict:
     """按最终烧录管线渲染单帧预览图，返回 data URL，供导出前所见即所得确认。"""
     if not Path(req.video_path).exists():
-        raise HTTPException(404, "源视频不存在")
+        raise HTTPException(404, "Source video not found")
     if not req.tracks:
-        raise HTTPException(400, "没有可预览的字幕轨")
+        raise HTTPException(400, "No subtitle tracks to preview")
     d = work_dir()
     sub = write_burn_ass(req, "preview", "burn_preview", req.burn_track_id, d)
     jpg = d / "burn_preview.jpg"

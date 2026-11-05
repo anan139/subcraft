@@ -186,13 +186,13 @@ def _get_translator(
     if provider == "deepl":
         key = api_key or store.get("deepl_api_key")
         if not key:
-            raise RuntimeError("未配置 DeepL API Key（设置页中填写）")
+            raise RuntimeError("No DeepL API key configured (fill it in Settings)")
         return DeepLTranslator(key)
     p = get_ai_provider(provider_id) or {}
     key = api_key or p.get("api_key", "")
     if not key:
-        name = p.get("name") or "AI 翻译接口"
-        raise RuntimeError(f"未配置 {name} 的 API Key（设置页中添加/填写）")
+        name = p.get("name") or "AI translation provider"
+        raise RuntimeError(f"No API key configured for {name} (add/fill it in Settings)")
     return OpenAICompatTranslator(
         key,
         base_url or p.get("base_url", ""),
@@ -246,7 +246,7 @@ def translate_segments(
             results[idx] = text
         done += len(batch)
         if progress_cb:
-            progress_cb(min(done / max(len(segments), 1), 0.99), f"翻译中 {done}/{len(segments)}")
+            progress_cb(min(done / max(len(segments), 1), 0.99), f"Translating {done}/{len(segments)}")
 
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
         list(pool.map(work, batches))

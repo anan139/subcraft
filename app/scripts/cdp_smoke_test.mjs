@@ -9,7 +9,7 @@ if (!video) {
 }
 
 const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()
-const page = list.find((t) => t.type === 'page' && (t.url.includes('subcraft') || t.url.includes('index.html')))
+const page = list.find((t) => t.type === 'page' && (t.url.includes('subcraft') || t.url.includes('index.html') || t.url.includes('47654')))
 if (!page) {
   console.error('FAIL: 找不到渲染进程页面', list.map((t) => t.url))
   process.exit(1)
@@ -104,7 +104,7 @@ console.log('ERROR_CARD:', errCard)
 
 // 7. 设置对话框：打开 → 应有 AI 厂商与 DeepL 分区（先记录原配置便于最后还原）
 const origProviders = await evalJs(`window.__subcraft_test.api.getConfig().then(c => c.ai_providers)`)
-await evalJs(`[...document.querySelectorAll('button')].find(b => b.textContent.includes('设置'))?.click()`)
+await evalJs(`[...document.querySelectorAll('button')].find(b => b.textContent.includes('Settings'))?.click()`)
 await new Promise((r) => setTimeout(r, 600))
 const settings = await evalJs(`(() => {
   const heads = [...document.querySelectorAll('.section-head')].map(h => h.textContent.trim())
@@ -124,10 +124,11 @@ await evalJs(`(() => {
   setter.call(input, 'sk-fake-test-key')
   input.dispatchEvent(new Event('input', { bubbles: true }))
 })()`)
-await evalJs(`[...document.querySelectorAll('.dialog .actions button')].find(b => b.textContent === '保存')?.click()`)
+await evalJs(`[...document.querySelectorAll('.dialog .actions button')].find(b => b.textContent === 'Save')?.click()`)
 await new Promise((r) => setTimeout(r, 800))
 const savedCfg = await evalJs(`window.__subcraft_test.api.getConfig().then(c => ({
   providers: c.ai_providers.map(p => ({ name: p.name, base: p.base_url, keyMasked: p.api_key.startsWith('****'), keySet: !!p.api_key_set })),
+  baseCount: ${JSON.stringify(origProviders)}.length,
 }))`)
 console.log('SAVED_CFG:', JSON.stringify(savedCfg))
 
@@ -138,15 +139,16 @@ const testDeepl = await evalJs(`window.__subcraft_test.api.testTranslate({ provi
 console.log('TEST_DEEPL_NOKEY:', JSON.stringify(testDeepl))
 
 // 关闭设置对话框并还原原配置
-await evalJs(`[...document.querySelectorAll('.dialog .actions button')].find(b => b.textContent === '关闭')?.click()`)
+await evalJs(`[...document.querySelectorAll('.dialog .actions button')].find(b => b.textContent === 'Close')?.click()`)
 await evalJs(`window.__subcraft_test.api.saveConfig({ ai_providers: ${JSON.stringify(origProviders)} })`)
 
 console.log('CONSOLE_ERRORS:', consoleErrors.length ? consoleErrors : '无')
 const pass = bridge && probe && !String(probe).startsWith('ERR') && render.video && render.jassubCanvas && render.jassubInstance && render.jassubParent === 'JASSUB' && render.segRows === 1 && ass >= 1
   && overlay && overlay.pct === '42%' && overlay.fillWidth === '42%' && overlay.spinner && errCard
   && settings.heads.length >= 3 && settings.presetCount >= 5
-  && savedCfg.providers.length === 1 && savedCfg.providers[0].keyMasked && savedCfg.providers[0].keySet
-  && testAi.ok === false && testDeepl.ok === false && String(testDeepl.message).includes('Key')
+  && savedCfg.providers.length === savedCfg.baseCount + 1
+  && (last => last.keyMasked && last.keySet)(savedCfg.providers[savedCfg.providers.length - 1])
+  && testAi.ok === false && testDeepl.ok === false && String(testDeepl.message).toLowerCase().includes('key')
   && consoleErrors.length === 0
 console.log(pass ? 'SMOKE_TEST_PASS' : 'SMOKE_TEST_FAIL')
 process.exit(pass ? 0 : 1)

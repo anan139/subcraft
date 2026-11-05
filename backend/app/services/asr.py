@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from ..config import store, work_dir
 from ..models import Segment
@@ -15,12 +15,47 @@ ProgressCb = Callable[[float, str], None]
 
 # 模型名 -> 说明（供前端展示）
 WHISPER_MODELS = {
-    "tiny": "tiny (最快，精度低)",
+    "tiny": "tiny (fastest, lower accuracy)",
     "base": "base",
     "small": "small",
     "medium": "medium",
-    "large-v3-turbo": "large-v3-turbo (推荐：速度快精度高)",
-    "large-v3": "large-v3 (最高精度)",
+    "large-v3-turbo": "large-v3-turbo (recommended: fast and accurate)",
+    "large-v3": "large-v3 (highest accuracy)",
+}
+
+# Parakeet 各模型支持的语言（ISO 码）；选择其他语言时直接报错并提示换引擎
+PARAKEET_LANGS: dict[str, set[str]] = {
+    "nemo-parakeet-tdt-0.6b-v2": {"en"},
+    "nemo-parakeet-tdt-0.6b-v3": {
+        "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu",
+        "it", "lv", "lt", "mt", "pl", "pt", "ro", "sk", "sl", "es", "sv", "ru", "uk",
+    },
+}
+
+# 引擎 -> 模型id -> {label, langs}。langs 是给用户看的「擅长语言」说明（前端悬浮提示），
+# label 用于下拉框；两个本地引擎均为无需 PyTorch 的推理运行时（CTranslate2 / ONNX Runtime）。
+ASR_MODELS: dict[str, dict[str, dict[str, str]]] = {
+    "local": {
+        "tiny": {"label": "tiny (fastest, lower accuracy)", "langs": "99 languages — quick drafts only"},
+        "base": {"label": "base", "langs": "99 languages — fast, lower accuracy"},
+        "small": {"label": "small", "langs": "99 languages — balanced speed/accuracy"},
+        "medium": {"label": "medium", "langs": "99 languages — slower, better accuracy"},
+        "large-v3-turbo": {"label": "large-v3-turbo (recommended)", "langs": "99 languages — fast and accurate; great for CJK"},
+        "large-v3": {"label": "large-v3 (highest accuracy)", "langs": "99 languages — best accuracy; largest download"},
+    },
+    "parakeet": {
+        "nemo-parakeet-tdt-0.6b-v2": {
+            "label": "Parakeet TDT 0.6B v2",
+            "langs": "English only — top of the Open ASR leaderboard, very fast (CPU friendly)",
+        },
+        "nemo-parakeet-tdt-0.6b-v3": {
+            "label": "Parakeet TDT 0.6B v3 (multilingual)",
+            "langs": "25 European languages (auto-detect: bg/hr/cs/da/nl/en/et/fi/fr/de/el/hu/it/lv/lt/mt/pl/pt/ro/sk/sl/es/sv/ru/uk) — no CJK",
+        },
+    },
+    "openai": {
+        "whisper-1": {"label": "Whisper API (cloud, pay per use)", "langs": "57+ languages — 25MB per request, needs API key"},
+    },
 }
 
 
@@ -194,13 +229,13 @@ class LocalWhisper:
         from faster_whisper import WhisperModel
 
         _setup_cuda_dlls()
-        progress_cb(0.02, f"加载模型 {model_name} ({dev})，首次需下载...")
+        progress_cb(0.02, f"Loading model {model_name} ({dev}), downloads on first use...")
         try:
             self._model = WhisperModel(model_name, device=dev, compute_type=compute)
             self._loaded_name = f"{model_name}:{dev}"
         except Exception as e:
             if dev == "cuda":
-                progress_cb(0.02, f"CUDA 加载失败，回退 CPU: {e}")
+                progress_cb(0.02, f"CUDA load failed, falling back to CPU: {e}")
                 self._model = WhisperModel(model_name, device="cpu", compute_type="int8")
                 self._loaded_name = f"{model_name}:cpu"
             else:
@@ -221,7 +256,7 @@ class LocalWhisper:
                 progress_cb(min(p, 0.99), msg)
 
         def _do_transcribe(m) -> tuple[list[Segment], str]:
-            report(0.05, "识别中...")
+            report(0.05, "Transcribing...")
             segments_iter, info = m.transcribe(
                 _load_wav(wav_path),
                 language=None if language in (None, "auto") else language,
@@ -236,7 +271,7 @@ class LocalWhisper:
                 segments.append(Segment(start=round(s.start, 3), end=round(s.end, 3), text=s.text.strip()))
                 words.append([Word(start=w.start, end=w.end, text=w.word) for w in (s.words or [])])
                 if duration > 0:
-                    report(0.05 + 0.93 * min(s.end / duration, 1.0), f"识别中 {int(s.end)}s / {int(duration)}s")
+                    report(0.05 + 0.93 * min(s.end / duration, 1.0), f"Transcribing {int(s.end)}s / {int(duration)}s")
             return _resegment(segments, words), info.language or "und"
 
         model = self._load(model_name, device, report)
@@ -252,13 +287,98 @@ class LocalWhisper:
                 or "out of memory" in err_msg
             )
             if is_cuda_err and self._loaded_name and ":cuda" in self._loaded_name:
-                report(0.02, f"CUDA 执行失败 ({e})，正在自动回退到 CPU 模式重试...")
+                report(0.02, f"CUDA execution failed ({e}), automatically retrying on CPU...")
                 from faster_whisper import WhisperModel
 
                 self._model = WhisperModel(model_name, device="cpu", compute_type="int8")
                 self._loaded_name = f"{model_name}:cpu"
                 return _do_transcribe(self._model)
             raise
+
+
+_parakeet_cache: dict[str, Any] = {}
+
+
+def _get_parakeet(model_name: str):
+    """加载（并缓存）Parakeet ONNX 模型；int8 量化，CPU 友好，无需 PyTorch。"""
+    if model_name not in _parakeet_cache:
+        import onnx_asr
+
+        _parakeet_cache[model_name] = onnx_asr.load_model(model_name, quantization="int8").with_timestamps()
+    return _parakeet_cache[model_name]
+
+
+def _tokens_to_words(tokens: list[str], stamps: list[float], seg_start: float, seg_end: float) -> list[Word]:
+    """把 BPE token 时间戳聚合成词：NeMo 分词器里词首 token 以空格开头。
+
+    Word.text 保留原始前导空格（与 faster-whisper 一致，segmenter._join 直接拼接还原文本）。
+    """
+    words: list[Word] = []
+    for tok, t in zip(tokens, stamps):
+        if tok[:1].isspace() or not words:
+            if words:
+                words[-1].end = seg_start + t          # 上一个词到此 token 开始处为止
+            words.append(Word(start=seg_start + t, end=seg_end, text=tok))
+        else:
+            words[-1].text += tok                       # 词内续片
+    return [w for w in words if w.text.strip()]
+
+
+def transcribe_parakeet(
+    video_path: str,
+    duration: float,
+    model_name: str,
+    language: str | None = None,
+    progress_cb: ProgressCb | None = None,
+) -> tuple[list[Segment], str]:
+    """NVIDIA Parakeet TDT（ONNX Runtime int8）：欧洲语系高精度高速引擎。
+
+    Silero VAD 切出语音段 → 逐段带词级时间戳识别 → 复用与 whisper 相同的断句管线。
+    每段之间经 progress_cb 上报，取消任务会在下一段开始前中断。
+    """
+    import numpy as np
+    import onnx_asr
+
+    def report(p: float, msg: str) -> None:
+        if progress_cb:
+            progress_cb(min(p, 0.99), msg)
+
+    supported = PARAKEET_LANGS.get(model_name)
+    lang = None if language in (None, "", "auto") else language
+    if supported and lang and lang not in supported:
+        names = ", ".join(sorted(supported))
+        raise RuntimeError(f"{model_name} supports: {names}. '{lang}' is not supported — use the local faster-whisper engine for other languages")
+
+    report(0.0, "Extracting audio...")
+    wav_path = work_dir() / f"asr_{os.getpid()}.wav"
+    ffmpeg_tool.extract_audio(video_path, wav_path)
+    try:
+        report(0.04, f"Loading {model_name} (int8), downloads on first use...")
+        model = _get_parakeet(model_name)
+        report(0.08, "Detecting speech segments (VAD)...")
+        vad = onnx_asr.load_vad("silero")
+        waveform = _load_wav(wav_path)
+        if not isinstance(waveform, np.ndarray):
+            raise RuntimeError("Unexpected audio format from ffmpeg extraction")
+        raw = next(iter(vad.segment_batch(waveform[None, :], np.array([len(waveform)]), 16000)))
+        segs = [(s / 16000.0, e / 16000.0) for s, e in raw]
+        if not segs:
+            return [], "und"
+        segments: list[Segment] = []
+        words: list[list[Word]] = []
+        n = len(segs)
+        for i, (s, e) in enumerate(segs):
+            report(0.1 + 0.85 * i / n, f"Transcribing {i + 1}/{n}")
+            r = model.recognize(waveform[int(s * 16000):int(e * 16000)], sample_rate=16000)
+            text = (r.text or "").strip()
+            if text:
+                segments.append(Segment(start=round(s, 3), end=round(e, 3), text=text))
+                words.append(_tokens_to_words(list(r.tokens), list(r.timestamps), s, e))
+        report(0.97, "Rebuilding subtitle lines...")
+        detected = lang or ("en" if model_name.endswith("-v2") else "und")
+        return _resegment(segments, words), detected
+    finally:
+        wav_path.unlink(missing_ok=True)
 
 
 def transcribe_openai_api(
@@ -275,14 +395,14 @@ def transcribe_openai_api(
         if progress_cb:
             progress_cb(p, msg)
 
-    report(0.05, "提取音频...")
+    report(0.05, "Extracting audio...")
     mp3 = work_dir() / f"upload_{os.getpid()}.mp3"
     ffmpeg_tool.extract_audio_mp3(video_path, mp3)
     if mp3.stat().st_size > 24 * 1024 * 1024:
         mp3.unlink(missing_ok=True)
-        raise RuntimeError("音频超过 25MB，超出 Whisper API 限制，请改用本地识别")
+        raise RuntimeError("Audio exceeds the 25MB Whisper API limit — use local transcription instead")
 
-    report(0.3, "上传并识别中...")
+    report(0.3, "Uploading and transcribing...")
     client = OpenAI(api_key=api_key, base_url=base_url or None)
     with open(mp3, "rb") as f:
         resp = client.audio.transcriptions.create(
@@ -298,7 +418,7 @@ def transcribe_openai_api(
         for s in (resp.segments or [])
         if s.text.strip()
     ]
-    report(0.99, "识别完成")
+    report(0.99, "Transcription complete")
     return _resegment(segments), getattr(resp, "language", None) or "und"
 
 
@@ -322,8 +442,11 @@ def transcribe(
         p = get_ai_provider() or {}
         key = api_key or p.get("api_key", "")
         if not key:
-            raise RuntimeError("未配置 AI 接口的 API Key（设置页中添加厂商后重试）")
+            raise RuntimeError("No API key configured for the AI provider (add one in Settings and retry)")
         return transcribe_openai_api(video_path, key, base_url or p.get("base_url", ""), language, progress_cb)
+    if engine == "parakeet":
+        model_name = model_name or store.get("parakeet_model", "nemo-parakeet-tdt-0.6b-v3")
+        return transcribe_parakeet(video_path, duration, model_name, language, progress_cb)
     # 本地引擎
     model_name = model_name or store.get("whisper_model", "large-v3-turbo")
     device = store.get("whisper_device", "auto")
@@ -332,7 +455,7 @@ def transcribe(
         if progress_cb:
             progress_cb(p, msg)
 
-    report(0.0, "提取音频...")
+    report(0.0, "Extracting audio...")
     wav = work_dir() / f"asr_{os.getpid()}.wav"
     ffmpeg_tool.extract_audio(video_path, wav)
     try:

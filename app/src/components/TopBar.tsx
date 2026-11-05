@@ -1,32 +1,27 @@
-// 顶栏：导入视频 → 识别 → 翻译 → 导出 主流程 + 设置 + 进度显示
+// 顶栏：导入视频 → 识别 → 翻译 → 导出 主流程 + 批量 + 设置 + 进度显示
 import { useState } from 'react'
-import { api } from '../api'
 import { useStore } from '../store'
+import { importVideoPath } from '../videoImport'
 import TranscribeDialog from './TranscribeDialog'
 import TranslateDialog from './TranslateDialog'
 import ExportDialog from './ExportDialog'
+import BatchDialog from './BatchDialog'
 import SettingsDialog from './SettingsDialog'
 
 export default function TopBar({ sysOk }: { sysOk: { ffmpeg: boolean; cuda: boolean } | null }) {
-  const { media, setVideo, tracks, task } = useStore()
-  const [dialog, setDialog] = useState<'' | 'transcribe' | 'translate' | 'export' | 'settings'>('')
+  const { media, tracks, task } = useStore()
+  const [dialog, setDialog] = useState<'' | 'transcribe' | 'translate' | 'export' | 'batch' | 'settings'>('')
   const busy = task?.status === 'running'
 
   async function importVideo() {
     const path = await window.subcraft.openVideoDialog()
-    if (!path) return
-    try {
-      const info = await api.probe(path)
-      setVideo(path, info)
-    } catch (e) {
-      alert(`无法读取视频: ${e instanceof Error ? e.message : e}`)
-    }
+    if (path) await importVideoPath(path)
   }
 
   return (
     <div className="topbar">
       <div className="topbar-brand">
-        <span className="title">🎬 SubCraft 字幕生成器</span>
+        <span className="title">🎬 SubCraft</span>
         <span className="title-badge">LORENTZ MATRIX</span>
       </div>
 
@@ -35,10 +30,10 @@ export default function TopBar({ sysOk }: { sysOk: { ffmpeg: boolean; cuda: bool
           className="quantum-btn btn-import"
           onClick={importVideo}
           disabled={busy}
-          title="导入本地视频文件"
+          title="Import a local video file"
         >
           <span className="btn-step">00</span>
-          <span>导入视频</span>
+          <span>Import Video</span>
         </button>
 
         <span className="pipeline-connector">›</span>
@@ -47,10 +42,10 @@ export default function TopBar({ sysOk }: { sysOk: { ffmpeg: boolean; cuda: bool
           className="quantum-btn primary btn-transcribe"
           disabled={!media || busy}
           onClick={() => setDialog('transcribe')}
-          title="识别视频音轨生成字幕"
+          title="Transcribe the video audio track into subtitles"
         >
           <span className="btn-step">01</span>
-          <span>识别字幕</span>
+          <span>Transcribe</span>
         </button>
 
         <span className="pipeline-connector">›</span>
@@ -59,10 +54,10 @@ export default function TopBar({ sysOk }: { sysOk: { ffmpeg: boolean; cuda: bool
           className="quantum-btn primary btn-translate"
           disabled={!tracks.some((t) => t.role === 'source') || busy}
           onClick={() => setDialog('translate')}
-          title="将源语言字幕翻译为目标语言"
+          title="Translate the source-language subtitles into the target language"
         >
           <span className="btn-step">02</span>
-          <span>翻译</span>
+          <span>Translate</span>
         </button>
 
         <span className="pipeline-connector">›</span>
@@ -71,10 +66,22 @@ export default function TopBar({ sysOk }: { sysOk: { ffmpeg: boolean; cuda: bool
           className="quantum-btn success btn-export"
           disabled={tracks.length === 0 || busy}
           onClick={() => setDialog('export')}
-          title="导出 SRT/ASS 文件或封装/烧录视频"
+          title="Export SRT/ASS files, mux soft subtitles or burn them into the video"
         >
           <span className="btn-step">03</span>
-          <span>导出</span>
+          <span>Export</span>
+        </button>
+
+        <span className="pipeline-connector">›</span>
+
+        <button
+          className="quantum-btn btn-batch"
+          disabled={busy}
+          onClick={() => setDialog('batch')}
+          title="Batch process a whole folder: transcribe (+ translate) + export for every video"
+        >
+          <span className="btn-step">04</span>
+          <span>Batch</span>
         </button>
       </div>
 
@@ -88,9 +95,9 @@ export default function TopBar({ sysOk }: { sysOk: { ffmpeg: boolean; cuda: bool
         <button
           className="quantum-btn btn-settings"
           onClick={() => setDialog('settings')}
-          title="配置 AI 翻译厂商与系统参数"
+          title="Configure AI translation providers and system parameters"
         >
-          ⚙ 设置
+          ⚙ Settings
         </button>
 
         {sysOk && (
@@ -123,6 +130,7 @@ export default function TopBar({ sysOk }: { sysOk: { ffmpeg: boolean; cuda: bool
       {dialog === 'transcribe' && <TranscribeDialog onClose={() => setDialog('')} />}
       {dialog === 'translate' && <TranslateDialog onClose={() => setDialog('')} />}
       {dialog === 'export' && <ExportDialog onClose={() => setDialog('')} />}
+      {dialog === 'batch' && <BatchDialog onClose={() => setDialog('')} />}
       {dialog === 'settings' && <SettingsDialog onClose={() => setDialog('')} />}
     </div>
   )

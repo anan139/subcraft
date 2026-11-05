@@ -45,6 +45,24 @@ def start_transcribe(req: TranscribeRequest) -> dict:
     return {"task_id": manager.submit(job)}
 
 
+@router.get("/asr_models")
+def asr_models() -> dict:
+    """识别引擎与模型清单（含各模型擅长语言的悬浮提示）。"""
+    return asr.ASR_MODELS
+
+
+@router.get("/whisper_models")
+def whisper_models() -> dict[str, str]:
+    return asr.WHISPER_MODELS
+
+
+@router.post("/tasks/{task_id}/cancel")
+def cancel_task(task_id: str) -> dict:
+    if not manager.cancel(task_id):
+        raise HTTPException(400, "Task is not running")
+    return {"ok": True}
+
+
 @router.post("/translate")
 def start_translate(req: TranslateRequest) -> dict:
     def job(progress_cb):
@@ -86,22 +104,22 @@ def test_translate_connection(req: TranslateTestRequest) -> dict:
             lat = int((time.time() - t0) * 1000)
             return {
                 "ok": True,
-                "message": f"连接成功（{lat}ms），本月用量 {usage.get('character_count', 0):,} / {usage.get('character_limit', 0):,} 字符",
+                "message": f"Connected ({lat}ms), usage this month {usage.get('character_count', 0):,} / {usage.get('character_limit', 0):,} characters",
                 "latency_ms": lat,
             }
         reply = t.translate_batch(["你好，世界"], "zh", "en")
         lat = int((time.time() - t0) * 1000)
-        return {"ok": True, "message": f"连接成功（{lat}ms），测试译文: {reply[0]}", "latency_ms": lat}
+        return {"ok": True, "message": f"Connected ({lat}ms), test translation: {reply[0]}", "latency_ms": lat}
     except Exception as e:
         lat = int((time.time() - t0) * 1000)
-        return {"ok": False, "message": f"连接失败（{lat}ms）: {e}", "latency_ms": lat}
+        return {"ok": False, "message": f"Connection failed ({lat}ms): {e}", "latency_ms": lat}
 
 
 @router.get("/tasks/{task_id}")
 def get_task(task_id: str) -> dict:
     t = manager.get(task_id)
     if t is None:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, "Task not found")
     return t
 
 

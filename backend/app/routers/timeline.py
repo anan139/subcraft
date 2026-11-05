@@ -59,13 +59,13 @@ def check(req: CheckRequest) -> dict:
 def cuts(req: CutsRequest) -> dict:
     """后台检测镜头切点（长视频需要一会儿）；结果 {cuts: [...]}，同一视频再次调用走缓存。"""
     if not Path(req.video_path).exists():
-        raise HTTPException(404, f"视频不存在: {req.video_path}")
+        raise HTTPException(404, f"Video not found: {req.video_path}")
 
     def job(progress_cb):
         ffmpeg, _ = ffmpeg_tool.ensure_ffmpeg(progress_cb)
-        progress_cb(0.1, "正在检测镜头切点…")
+        progress_cb(0.1, "Detecting shot cuts…")
         found = timeline.detect_cuts(ffmpeg, req.video_path, req.threshold)
-        progress_cb(1.0, f"检测到 {len(found)} 个切点")
+        progress_cb(1.0, f"Detected {len(found)} cut(s)")
         return {"cuts": found}
 
     return {"task_id": manager.submit(job)}
@@ -76,13 +76,13 @@ def apply(req: ApplyRequest) -> dict:
     tracks = [t.model_copy(deep=True) for t in req.tracks]
     target = next((t for t in tracks if t.id == req.track_id), None)
     if target is None:
-        raise HTTPException(404, f"轨道不存在: {req.track_id}")
+        raise HTTPException(404, f"Track not found: {req.track_id}")
     others = timeline.aligned_with(tracks, target) if req.sync else []
     info: dict = {}
     try:
         if req.op == "split":
             if req.index is None:
-                raise ValueError("缺少 index")
+                raise ValueError("Missing index")
             target.segments = timeline.split(target.segments, req.index, req.at_time, req.text)
             cut = target.segments[req.index].end
             for o in others:
@@ -90,7 +90,7 @@ def apply(req: ApplyRequest) -> dict:
             info["split_at"] = cut
         elif req.op == "merge":
             if req.first is None or req.last is None:
-                raise ValueError("缺少 first/last")
+                raise ValueError("Missing first/last")
             for t in [target, *others]:
                 t.segments = timeline.merge(t.segments, req.first, req.last)
         elif req.op == "shift":
@@ -100,7 +100,7 @@ def apply(req: ApplyRequest) -> dict:
                     info["shifted"] = n
         elif req.op == "snap":
             if not req.cuts:
-                raise ValueError("缺少 cuts：请先调用 /api/timeline/cuts 检测切点")
+                raise ValueError("Missing cuts: call /api/timeline/cuts first to detect them")
             for t in [target, *others]:
                 t.segments, changes = timeline.snap_to_cuts(t.segments, req.cuts, req.tolerance)
                 if t is target:

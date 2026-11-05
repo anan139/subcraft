@@ -52,8 +52,8 @@ class MediaInfo(BaseModel):
 
 # 常见语言(代码 -> 显示名)，前后端共用
 LANGUAGES: dict[str, str] = {
-    "auto": "自动检测",
-    "zh": "中文",
+    "auto": "Auto detect",
+    "zh": "Chinese",
     "en": "English",
     "ja": "日本語",
     "ko": "한국어",
@@ -68,5 +68,5 @@ LANGUAGES: dict[str, str] = {
     "vi": "Tiếng Việt",
     "id": "Bahasa Indonesia",
     "hi": "हिन्दी",
-    "yue": "粤语",
+    "yue": "Cantonese",
 }

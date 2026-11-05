@@ -3,8 +3,8 @@
 ## 项目结构
 
 - `backend/` — Python FastAPI 后端（Electron 以子进程拉起，HTTP+WebSocket 通信）
-  - `app/services/` — 核心业务：asr(识别)、translator(翻译)、ass_builder/srt_builder(字幕)、subtitle_parser(srt/vtt/ass 解析)、ffmpeg_tool(封装)、fonts(系统字体)
-  - `app/routers/` — media / transcribe(+translate) / export / config / timeline（编辑器时间轴操作，复用 services/timeline）
+  - `app/services/` — 核心业务：asr(识别，本地引擎=faster-whisper/CTranslate2 与 Parakeet/onnx-asr，云端=OpenAI)、batch(批量流水线，CLI/MCP/桌面端共用)、translator(翻译)、ass_builder/srt_builder(字幕)、subtitle_parser(srt/vtt/ass 解析)、ffmpeg_tool(封装)、fonts(系统字体)
+  - `app/routers/` — media / transcribe(+translate，含 /api/asr_models 模型清单与 /api/tasks/{id}/cancel) / export / config / timeline（编辑器时间轴操作，复用 services/timeline）/ batch（桌面端批量，复用 services/batch）
   - `app/mcp/` — MCP 服务端：state(会话轨道+后台任务池) / tools(27 个 subcraft_* 工具，含 AI 自译写回与时间轴拆分/合并/平移/切点吸附/检查) / server(装配) / compat(mcp 1.x/2.x 适配)；入口 `backend/mcp_server.py`（stdio，复用 services 层，不依赖桌面客户端）
   - `app/tasks.py` — 线程池任务 + WS 进度广播；长任务一律走 `manager.submit(job)`，job 接收 `progress_cb(p, msg)`
   - `run.py` — 入口（sys.path 自举，任意 cwd 可运行）
@@ -44,7 +44,7 @@ cd app; npm run dev                                     # 开发启动
 - 本地 API 安全：所有 HTTP/WS 请求经 `app/security.py` 校验令牌（头 `X-SubCraft-Token` 或 `?token=`，`<video src>`/WS 用查询参数，见 `api.ts` 的 `withToken`）；新增路由无需额外处理，新增无法带头的资源 URL 记得 `withToken`
 - 识别断句在 `services/segmenter.py`（`resegment`），本地引擎用词级时间戳、云端按字数比例插值；翻译上下文/术语表在 `translator._build_prompt`
 - 时间轴操作在 `services/timeline.py`（纯函数：split/merge/shift/snap_to_cuts/check），MCP 时间轴工具与 CLI `retime` 共用；结构操作通过 `tools._paired` 同步到逐段对齐的其他轨
-- 前端注释与 UI 文案使用中文
+- 前端注释使用中文；UI 文案与面向用户的提示（含后端进度/错误消息）使用英文（自 0.2.3 起本地化为英文）
 
 ## 发布流程
 

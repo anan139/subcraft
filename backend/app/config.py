@@ -62,6 +62,25 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # ASR
     "whisper_model": "large-v3-turbo",
     "whisper_device": "auto",        # auto / cuda / cpu
+    "parakeet_model": "nemo-parakeet-tdt-0.6b-v3",   # Parakeet 引擎默认模型
+    # 识别对话框记住的上次选择：引擎 / 视频语言
+    "asr_engine": "local",           # local / parakeet / openai
+    "whisper_language": "auto",      # auto 或 ISO 语言码
+    # 翻译对话框记住的上次选择：目标语言 / 服务（'ai:<id>' 或 'deepl'；空 = 自动挑选）
+    "translate_target": "en",
+    "translate_choice": "",
+    # 导出对话框记住的上次选择：格式 / 视频模式 / 输出目录
+    "export_srt": True,
+    "export_ass": True,
+    "export_video": True,
+    "export_hard": False,            # false=软字幕封装 / true=内嵌烧录
+    "export_dir": "",                # 最近一次选择的输出目录（批量与导出共用）
+    # 批量对话框记住的上次选择（文件夹与输出目录不记忆，每次现场选择）
+    "batch_recursive": False,
+    "batch_snap_cuts": False,
+    "batch_srt": True,
+    "batch_ass": True,
+    "batch_video": "",               # '' / soft / hard
     # 翻译批处理
     "translate_batch_size": 25,
     "translate_concurrency": 4,

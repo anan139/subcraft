@@ -47,7 +47,7 @@ export default function VideoPlayer() {
       return
     }
     clearTimeout(debounceRef.current)
-    // 拖动定位期间用短防抖让字幕跟手，其余操作 150ms 合并
+    // 拖动定位期间用短防抖让字幕跟手；常规编辑 300ms 合并（逐字输入不触发连续重渲染）
     debounceRef.current = setTimeout(async () => {
       try {
         const { ass } = await api.previewAss({
@@ -55,8 +55,8 @@ export default function VideoPlayer() {
           width: media?.width || 1920, height: media?.height || 1080,
         })
         await renderAss(ass)
-      } catch (e) { console.warn('字幕预览刷新失败:', e) }
-    }, dragActiveRef.current ? 30 : 150)
+      } catch (e) { console.warn('Subtitle preview refresh failed:', e) }
+    }, dragActiveRef.current ? 30 : 300)
     return () => clearTimeout(debounceRef.current)
   }, [videoPath, tracks, bilingual, primaryTrackId, media])
 
@@ -221,7 +221,7 @@ export default function VideoPlayer() {
           <LorenzCanvas className="lorenz-bg" opacity={0.65} interactive scaleMultiplier={1.2} />
           <div className="empty-card">
             <div className="big big-icon">🎬</div>
-            <div className="empty-title">点击左上角「导入视频」开始</div>
+            <div className="empty-title">Click "Import Video" in the top-left to start</div>
             <div className="empty-sub">[TOPOLOGY: LORENTZ-3D // READY]</div>
           </div>
         </div>

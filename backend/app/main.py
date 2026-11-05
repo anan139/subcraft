@@ -6,13 +6,13 @@ import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import config, export, media, timeline, transcribe
+from .routers import batch, config, export, media, timeline, transcribe
 from .security import ALLOWED_ORIGIN_REGEX, TokenAuthMiddleware
 from .tasks import manager
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="SubCraft Backend", version="0.2.3")
+    app = FastAPI(title="SubCraft Backend", version="0.2.4")
     # 先加令牌校验，再加 CORS（后加的在外层），保证预检请求由 CORS 直接应答
     app.add_middleware(TokenAuthMiddleware)
     app.add_middleware(
@@ -26,6 +26,7 @@ def create_app() -> FastAPI:
     app.include_router(export.router)
     app.include_router(config.router)
     app.include_router(timeline.router)
+    app.include_router(batch.router)
 
     @app.on_event("startup")
     async def _startup() -> None:

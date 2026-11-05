@@ -8,7 +8,7 @@ type Op = Parameters<typeof api.timelineApply>[0]
 export async function applyTimeline(op: Omit<Op, 'tracks' | 'track_id'> & { track_id?: string }): Promise<TimelineInfo> {
   const { tracks, activeTrackId, setTracks, setIssues } = useStore.getState()
   const track_id = op.track_id ?? activeTrackId
-  if (!track_id) throw new Error('没有选中的字幕轨')
+  if (!track_id) throw new Error('No subtitle track selected')
   const res = await api.timelineApply({ ...op, tracks, track_id })
   setTracks(res.tracks)
   setIssues(res.issues)
@@ -21,8 +21,8 @@ export function playhead(): number {
 }
 
 export const ISSUE_LABEL: Record<string, string> = {
-  overlap: '与下一段重叠',
-  too_short: '过短',
-  too_long: '过长',
-  too_fast: '阅读速度过快',
+  overlap: 'Overlaps next segment',
+  too_short: 'Too short',
+  too_long: 'Too long',
+  too_fast: 'Reading speed too fast',
 }

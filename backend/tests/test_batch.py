@@ -161,7 +161,7 @@ def test_cli_batch_media_dry_run_and_run(tmp_path, monkeypatch, capsys):
 
     assert cli.main(["batch", str(tmp_path), "-t", "zh", "--formats", "srt", "--primary-target"]) == 0
     captured = capsys.readouterr()
-    assert "成功 2" in captured.out and "失败 1" in captured.out and "未识别到语音内容" in captured.out
+    assert "成功 2" in captured.out and "失败 1" in captured.out and "No speech detected in the audio" in captured.out
     assert (tmp_path / "EP2.en.srt").exists() and (tmp_path / "EP10.zh.srt").exists()
     assert (tmp_path / "EP10.bilingual.srt").read_text(encoding="utf-8-sig").index("[zh]Hello") < \
         (tmp_path / "EP10.bilingual.srt").read_text(encoding="utf-8-sig").index("\nHello")
@@ -171,7 +171,7 @@ def test_cli_batch_media_dry_run_and_run(tmp_path, monkeypatch, capsys):
 def test_cli_batch_stop_on_error_and_empty_folder(tmp_path, monkeypatch, capsys):
     _patch(monkeypatch, cli_side=True)
     assert cli.main(["batch", str(tmp_path), "-q"]) == 2            # 空文件夹
-    assert "没有找到" in capsys.readouterr().err
+    assert "No processable files" in capsys.readouterr().err
     for n in ["a_silent.mp4", "b.mp4"]:
         (tmp_path / n).write_bytes(b"x")
     assert cli.main(["batch", str(tmp_path), "--stop-on-error", "--json", "-q"]) == 0
@@ -198,7 +198,7 @@ def test_mcp_batch_tool(tmp_path, monkeypatch):
     again = asyncio.run(tools.subcraft_batch_process(None, str(tmp_path), "ja", mode="subs", formats=["srt"]))
     assert again["skipped"] == 2
 
-    with pytest.raises(Exception, match="必须指定目标语言"):
+    with pytest.raises(Exception, match="requires a target language"):
         asyncio.run(tools.subcraft_batch_process(None, str(tmp_path), mode="subs"))
     empty = tmp_path / "empty"
     empty.mkdir()

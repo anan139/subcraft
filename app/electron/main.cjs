@@ -65,9 +65,9 @@ async function startBackend() {
   const logFd = fs.openSync(logFile, 'a')
   backendProc = spawn(cmd, args, { env, cwd: path.dirname(args[0] && args[0].endsWith('run.py') ? args[0] : cmd), stdio: ['ignore', logFd, logFd], windowsHide: true })
   backendProc.on('error', (e) => console.error('backend spawn error:', e.message))
-  backendProc.on('exit', (code) => console.log('backend exited:', code, '日志:', logFile))
+  backendProc.on('exit', (code) => console.log('backend exited:', code, 'log:', logFile))
   const ok = await waitForBackend(backendPort)
-  if (!ok) console.error('后端启动超时')
+  if (!ok) console.error('Backend startup timeout')
 }
 
 function createWindow() {
@@ -77,7 +77,7 @@ function createWindow() {
     minWidth: 1100,
     minHeight: 700,
     backgroundColor: '#16181d',
-    title: 'SubCraft 字幕生成器',
+    title: 'SubCraft',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -111,10 +111,10 @@ app.on('quit', () => {
 ipcMain.handle('dialog:openVideo', async () => {
   const r = await dialog.showOpenDialog({
     properties: ['openFile'],
-    filters: [
-      { name: '视频文件', extensions: ['mp4', 'mkv', 'mov', 'avi', 'webm', 'ts', 'flv', 'wmv', 'm4v'] },
-      { name: '所有文件', extensions: ['*'] },
-    ],
+      filters: [
+        { name: 'Video files', extensions: ['mp4', 'mkv', 'mov', 'avi', 'webm', 'ts', 'flv', 'wmv', 'm4v'] },
+        { name: 'All files', extensions: ['*'] },
+      ],
   })
   return r.canceled ? null : r.filePaths[0]
 })

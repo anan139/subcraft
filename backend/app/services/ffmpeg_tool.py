@@ -66,7 +66,7 @@ def ensure_ffmpeg(progress_cb: ProgressCb | None = None) -> tuple[str, str]:
         return found
 
     if sys.platform != "win32":
-        raise FFmpegError("未找到 ffmpeg，请先安装并加入 PATH：sudo apt install ffmpeg")
+        raise FFmpegError("ffmpeg not found — please install it and add it to PATH: sudo apt install ffmpeg")
 
     def report(p: float, msg: str) -> None:
         if progress_cb:
@@ -75,7 +75,7 @@ def ensure_ffmpeg(progress_cb: ProgressCb | None = None) -> tuple[str, str]:
     dest = tools_dir() / "ffmpeg"
     dest.mkdir(parents=True, exist_ok=True)
     zip_path = tools_dir() / "ffmpeg-download.zip"
-    report(0.0, "下载 ffmpeg 中...")
+    report(0.0, "Downloading ffmpeg...")
     with httpx.stream("GET", FFMPEG_DOWNLOAD_URL, follow_redirects=True, timeout=None) as r:
         r.raise_for_status()
         total = int(r.headers.get("content-length", 0))
@@ -85,8 +85,8 @@ def ensure_ffmpeg(progress_cb: ProgressCb | None = None) -> tuple[str, str]:
                 f.write(chunk)
                 done += len(chunk)
                 if total:
-                    report(done / total * 0.9, f"下载 ffmpeg {done * 100 // total}%")
-    report(0.9, "解压 ffmpeg...")
+                    report(done / total * 0.9, f"Downloading ffmpeg {done * 100 // total}%")
+    report(0.9, "Extracting ffmpeg...")
     with zipfile.ZipFile(zip_path) as z:
         for member in z.namelist():
             parts = Path(member).parts
@@ -99,17 +99,17 @@ def ensure_ffmpeg(progress_cb: ProgressCb | None = None) -> tuple[str, str]:
                 with z.open(member) as src, open(target, "wb") as dst:
                     shutil.copyfileobj(src, dst)
     zip_path.unlink(missing_ok=True)
-    report(1.0, "ffmpeg 就绪")
+    report(1.0, "ffmpeg ready")
     found = find_ffmpeg()
     if not found:
-        raise FFmpegError("ffmpeg 下载后仍不可用")
+        raise FFmpegError("ffmpeg is still unavailable after download")
     return found
 
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess:
     proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if proc.returncode != 0:
-        raise FFmpegError(f"命令失败: {' '.join(cmd)}\n{proc.stderr[-2000:]}")
+        raise FFmpegError(f"Command failed: {' '.join(cmd)}\n{proc.stderr[-2000:]}")
     return proc
 
 
@@ -141,7 +141,7 @@ def _supports_disposition(ffmpeg: str) -> bool:
 def probe(path: str) -> MediaInfo:
     found = find_ffmpeg()
     if not found:
-        raise FFmpegError("未找到 ffmpeg，请先初始化")
+        raise FFmpegError("ffmpeg not found — please install it first")
     _, ffprobe = found
     p = Path(path)
     out = _run([
@@ -238,7 +238,11 @@ def _escape_filter_path(p: Path) -> str:
 
 
 def _run_with_progress(cmd: list[str], duration: float, on_progress: ProgressCb | None, msg: str) -> None:
-    """执行 ffmpeg 并解析 stderr 的 time= 输出上报进度（用于重编码类长任务）。"""
+    """执行 ffmpeg 并解析 stderr 的 time= 输出上报进度（用于重编码类长任务）。
+
+    on_progress 抛出的异常（如取消任务的 TaskCancelled）会先 kill ffmpeg 再向上传播，
+    避免进程在后台继续烧完整个视频。
+    """
     proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     assert proc.stderr is not None
     fd = proc.stderr.fileno()
@@ -261,11 +265,16 @@ def _run_with_progress(cmd: list[str], duration: float, on_progress: ProgressCb 
                     last_p = p
                     if on_progress:
                         on_progress(p, f"{msg} {int(p * 100)}%")
-    finally:
+    except BaseException:
+        proc.kill()                              # 取消/异常：立即终止 ffmpeg，不留下半截进程
         proc.wait()
+        raise
+    finally:
+        if proc.poll() is None:                  # 正常结束：回收子进程
+            proc.wait()
         proc.stderr.close()
     if proc.returncode != 0:
-        raise FFmpegError(f"命令失败: {' '.join(cmd)}\n{buf[-2000:]}")
+        raise FFmpegError(f"Command failed: {' '.join(cmd)}\n{buf[-2000:]}")
 
 
 def _subtitle_vf(ffmpeg: str, sub_file: Path, fonts_dir: str | None) -> str:
@@ -275,7 +284,7 @@ def _subtitle_vf(ffmpeg: str, sub_file: Path, fonts_dir: str | None) -> str:
     elif _has_filter(ffmpeg, "subtitles"):
         vf = f"subtitles={_escape_filter_path(sub_file)}"
     else:
-        raise FFmpegError("当前 ffmpeg 缺少 libass 字幕滤镜，无法内嵌字幕；请改用软字幕封装或更换完整版 ffmpeg")
+        raise FFmpegError("This ffmpeg build lacks the libass subtitle filter and cannot burn subtitles; use soft-subtitle muxing or a full ffmpeg build instead")
     if fonts_dir and Path(fonts_dir).is_dir():
         vf += f":fontsdir={_escape_filter_path(Path(fonts_dir))}"
     return vf
@@ -307,7 +316,7 @@ def burn_subtitles(
     else:
         cmd += ["-c:a", "copy"]
     cmd += [str(out_path)]
-    _run_with_progress(cmd, info.duration, progress_cb, "内嵌字幕中")
+    _run_with_progress(cmd, info.duration, progress_cb, "Burning subtitles")
     return out_path
 
 

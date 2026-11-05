@@ -10,6 +10,18 @@
   ],
   "extraResources": [
     {
+      "from": "../backend/dist/subcraft-backend",
+      "to": "backend/subcraft-backend"
+    },
+    {
+      "from": "../tools/ffmpeg",
+      "to": "tools/ffmpeg",
+      "filter": [
+        "**/*",
+        "!ffplay*"
+      ]
+    },
+    {
       "from": "../backend/app",
       "to": "backend/app"
     },
@@ -26,6 +38,7 @@
     "target": [
       "tar.gz"
     ],
+    "executableName": "SubCraft",
     "category": "AudioVideo",
     "artifactName": "SubCraft-${version}-x64-linux.tar.gz"
   }

@@ -141,6 +141,39 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: app/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      # 自包含 Linux 桌面包：编译后端（与 Windows 相同的 PyInstaller 产物，CPU 版）+ 静态 ffmpeg
+      - name: 安装后端依赖（不含 nvidia CUDA 包）
+        run: |
+          grep -v -E '^nvidia-' backend/requirements.txt > req-nocuda.txt
+          python -m pip install -r req-nocuda.txt
+      - name: 打包后端 subcraft-backend（CPU 版）
+        run: python backend/build_exe.py --no-cuda
+      - name: 冒烟测试：打包后的后端能启动、新路由可用
+        run: |
+          SUBCRAFT_TOKEN=ci-smoke backend/dist/subcraft-backend --port 47998 &
+          BPID=$!
+          ok=0
+          for i in $(seq 1 60); do
+            if curl -sf -H "X-SubCraft-Token: ci-smoke" http://127.0.0.1:47998/api/health > /dev/null; then ok=1; break; fi
+            sleep 2
+          done
+          if [ "$ok" != "1" ]; then kill $BPID 2>/dev/null || true; echo "::error::后端未就绪"; exit 1; fi
+          curl -sf -H "X-SubCraft-Token: ci-smoke" http://127.0.0.1:47998/api/asr_models | grep -q parakeet
+          kill $BPID 2>/dev/null || true
+          pkill -P $BPID 2>/dev/null || true          # onefile 启动器会派生子进程，一并回收
+          echo "后端启动正常，asr_models 含 parakeet"
+      - name: 下载静态 ffmpeg（含 libass）到 tools/ffmpeg/bin
+        run: |
+          curl -sL https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz -o ffmpeg.tar.xz
+          mkdir ffmpeg-tmp && tar xf ffmpeg.tar.xz -C ffmpeg-tmp --strip-components=1
+          mkdir -p tools/ffmpeg/bin
+          cp ffmpeg-tmp/bin/ffmpeg ffmpeg-tmp/bin/ffprobe tools/ffmpeg/bin/
+          chmod +x tools/ffmpeg/bin/*
+          tools/ffmpeg/bin/ffmpeg -hide_banner -version | head -1
+          tools/ffmpeg/bin/ffmpeg -hide_banner -filters 2>/dev/null | grep -q " ass " || { echo "::error::静态 ffmpeg 缺少 libass 滤镜"; exit 1; }
       - name: 打包 Electron（tar.gz）
         working-directory: app
         run: |

@@ -4,6 +4,7 @@ on:
   push:
     branches: [master]
   pull_request:
+  workflow_dispatch:   # 允许在 Actions 页手动触发
 
 jobs:
   backend:
